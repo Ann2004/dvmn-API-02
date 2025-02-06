@@ -13,9 +13,10 @@ def shorten_link(token, url_to_shorten):
     }
     response = requests.get(url, params=params)
     response.raise_for_status()
-    if 'invalid url' in response.text:
+    if 'error' in response.json():
         raise requests.exceptions.HTTPError('Несуществующая ссылка')
-    return response
+    short_link = response.json()['response']['short_url']
+    return short_link
 
 
 def count_clicks(token, short_link):
@@ -29,36 +30,46 @@ def count_clicks(token, short_link):
     }
     response = requests.get(url, params=params)
     response.raise_for_status()
-    if 'invalid key' in response.text:
+    if 'error' in response.json():
         raise requests.exceptions.HTTPError('Несуществующая ссылка')
-    return response
+    clicks_count = response.json()['response']['stats'][0]['views']
+    return clicks_count
 
 
-def is_shorten_link(url):
-    return urlparse(url).netloc == 'vk.cc'
+def is_shorten_link(token, short_url):
+    url = 'https://api.vk.ru/method/utils.getLinkStats'
+    path = urlparse(short_url).path
+    params = {
+        'access_token': token,
+        'key': path[1:],
+        'interval': 'forever',
+        'v': '5.199'
+    }
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    return 'error' in response.json()
 
 
 def main():
     load_dotenv()
-    access_token = os.getenv('ACCESS_TOKEN')
+    access_token = os.environ['VK_TOKEN']
     
-    user_input = input('Укажите ссылку для сокращения: ')
+    user_input = input('Укажите ссылку: ')
 
-    if is_shorten_link(user_input):
+    if is_shorten_link(access_token, user_input):
+        try:
+            short_link = shorten_link(access_token, user_input)
+        except requests.exceptions.HTTPError as e:
+            print(f'Ошибка: {e}')
+            return       
+        print('Сокращенная ссылка:', short_link)       
+    else:
         try:
             clicks_count = count_clicks(access_token, user_input)
         except requests.exceptions.HTTPError as e:
             print(f'Ошибка: {e}')
             return
-        print('Количество кликов по ссылке:', clicks_count.json()['response']['stats'][0]['views'])
-    else:
-        try:
-            short_link = shorten_link(access_token, user_input)
-        except requests.exceptions.HTTPError as e:
-            print(f'Ошибка: {e}')
-            return
-        short_link = short_link.json()['response']['short_url']
-        print('Сокращенная ссылка:', short_link)
+        print('Количество кликов по ссылке:', clicks_count)
 
 
 if __name__ == '__main__':
